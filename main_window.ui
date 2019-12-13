@@ -105,14 +105,19 @@
     </property>
     <addaction name="separator"/>
     <addaction name="menu_load"/>
+    <addaction name="menu_add"/>
     <addaction name="separator"/>
     <addaction name="actionSettings"/>
+    <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuTools">
     <property name="title">
      <string>Tools</string>
     </property>
-    <addaction name="actionLabelling"/>
+    <addaction name="menu_labeling"/>
+    <addaction name="menu_clustering"/>
+    <addaction name="separator"/>
+    <addaction name="actionSVM_2"/>
    </widget>
    <widget class="QMenu" name="menuProjection">
     <property name="title">
@@ -120,24 +125,30 @@
     </property>
     <addaction name="separator"/>
     <addaction name="actionCoronal"/>
-    <addaction name="separator"/>
     <addaction name="actionSagittal"/>
-    <addaction name="separator"/>
     <addaction name="actionTransversal"/>
    </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>View</string>
+    </property>
+    <addaction name="menu_mri"/>
+    <addaction name="menu_segmented"/>
+   </widget>
    <addaction name="menuFile"/>
-   <addaction name="menuTools"/>
    <addaction name="menuProjection"/>
+   <addaction name="menuView"/>
+   <addaction name="menuTools"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="menu_load">
+  <action name="menu_add">
    <property name="text">
     <string>Add Box</string>
    </property>
   </action>
-  <action name="actionLabelling">
+  <action name="menu_labeling">
    <property name="text">
-    <string>Labelling</string>
+    <string>Labeling</string>
    </property>
   </action>
   <action name="actionSettings">
@@ -167,6 +178,41 @@
    </property>
    <property name="text">
     <string>Transversal</string>
+   </property>
+  </action>
+  <action name="menu_load">
+   <property name="text">
+    <string>Load Data</string>
+   </property>
+  </action>
+  <action name="menu_pca">
+   <property name="text">
+    <string>PCA</string>
+   </property>
+  </action>
+  <action name="actionSVM">
+   <property name="text">
+    <string>SVM</string>
+   </property>
+  </action>
+  <action name="menu_clustering">
+   <property name="text">
+    <string>Clustering</string>
+   </property>
+  </action>
+  <action name="menu_mri">
+   <property name="text">
+    <string>MRI</string>
+   </property>
+  </action>
+  <action name="menu_segmented">
+   <property name="text">
+    <string>Segmented</string>
+   </property>
+  </action>
+  <action name="actionSVM_2">
+   <property name="text">
+    <string>SVM</string>
    </property>
   </action>
  </widget>
