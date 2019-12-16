@@ -28,6 +28,8 @@ class MatplotlibWidget(QMainWindow):
         self.pressed = False
         self.markROI = False
         self.polygon = []
+        self.region = []
+        self.label_array = None
 
         self.cluster_dialog = loadUi("clustering.ui")
         self.labeling_window = loadUi("labeling.ui")
@@ -51,18 +53,18 @@ class MatplotlibWidget(QMainWindow):
         self.slider_stack.valueChanged.connect(self.refresh)
 
         self.MplWidget.canvas.mpl_connect('button_press_event', self.pressed_handler)
-        self.MplWidget.canvas.mpl_connect('button_release_event', self.released_handler)
-        self.MplWidget.canvas.mpl_connect('motion_notify_event', self.moved_handler)
 
         self.cluster_dialog.button_run.clicked.connect(self.perform_clustering)
-        self.labeling_window.button_label.clicked.connect(self.select_labeled_ared)
-
         self.cluster_dialog.closeEvent = self.close_cluster_event
+        
         self.labeling_window.closeEvent = self.close_labeling_event
-
         self.labeling_window.lineEdit.textChanged.connect(self.create_label_list)
         self.labeling_window.menu_label_save.triggered.connect(self.save_labels)
         self.labeling_window.menu_label_load.triggered.connect(self.load_labels)
+        self.labeling_window.button_label.clicked.connect(self.select_labeled_ared)
+        self.labeling_window.button_clear.clicked.connect(self.clear_roi)
+        self.labeling_window.button_mark.clicked.connect(self.mark_roi)
+        self.labeling_window.button_back.clicked.connect(self.remove_point)
 
     def slice_change(self):
         self.refresh()
@@ -91,6 +93,8 @@ class MatplotlibWidget(QMainWindow):
         self.refresh()
         
     def refresh(self):
+        self.region = []
+
         if self.view == 'mri':
             data_array = self.dicom_data.data_array
         else:
@@ -210,38 +214,20 @@ class MatplotlibWidget(QMainWindow):
             self.pressed = True
             x = int(event.xdata)
             y = int(event.ydata)
+            z = self.slider_slice.value()
             self.clickPoint = (x, y)
-            if (self.labeling_window.isVisible() and 
-                self.labeling_window.cluster.isChecked() and
-                self.view == 'segments'):
-                self.region = self.region_growing(x, y)
+            if self.labeling_window.isVisible():
+                if self.labeling_window.cluster.isChecked() and self.view == 'segments':
+                    self.region = self.region_growing(x, y)
+                elif self.labeling_window.pixel.isChecked():
+                    self.region.append((y,x,z))
+                elif self.labeling_window.roi.isChecked():
+                    self.polygon.append((y,x,z))
+                    self.MplWidget.canvas.axes.scatter(x, y, s=1)
+                    self.MplWidget.canvas.draw()
                 self.drawRegion()
         except Exception as e:
             print('click error:', e)
-        
-    def released_handler(self, event):
-        try:
-            self.pressed = False
-            if (self.labeling_window.isVisible() and self.labeling_window.roi.isChecked()):
-                self.drawPolygon()
-            self.polygon.clear()
-            del self.clickPoint     
-        except Exception as e:
-            print('release error:', e)   
-    
-    def moved_handler(self, event):
-        try:
-            x = event.xdata
-            y = event.ydata
-            if (self.pressed and 
-               self.labeling_window.isVisible() and 
-               self.labeling_window.roi.isChecked()):
-                if ((x,y) not in self.polygon):
-                    self.MplWidget.canvas.axes.scatter(x, y, s=3)
-                    self.polygon.append((x, y))
-                self.MplWidget.canvas.draw()
-        except Exception as e:
-            print('move error:',e)
             
     def isInside(self, point):
         total = 0.0
@@ -287,19 +273,11 @@ class MatplotlibWidget(QMainWindow):
         return abs(total) > 3.14
 
     def getPolygonBox(self):
-        maxX, maxY = list(map(max,*self.polygon))
-        minX, minY = list(map(min,*self.polygon))
+        maxX = max([x[0] for x in self.polygon])
+        maxY = max([x[1] for x in self.polygon])
+        minX = min([x[0] for x in self.polygon])
+        minY = min([x[1] for x in self.polygon])
         return (minX, maxX, minY, maxY)
-
-    def drawPolygon(self):
-        box = self.getPolygonBox()
-        for x in range(int(box[0]-1),int(box[1]+1)):
-            for y in range(int(box[2]-1),int(box[3]+1)):
-                inside = self.isInside([x+0.5,y+0.5])
-                if inside:
-                    self.MplWidget.canvas.axes.scatter(x, y, s=3)
-        self.MplWidget.canvas.draw()
-        print('drawn')
 
     def drawRegion(self):
         for point in self.region:
@@ -378,10 +356,35 @@ class MatplotlibWidget(QMainWindow):
                         pass
         return region
 
+    def clear_roi(self):
+        self.region = []
+        self.polygon = []
+        self.refresh()
+
+    def mark_roi(self):
+        box = self.getPolygonBox()
+        z = self.slider_slice.value()
+        for x in range(int(box[0]-1),int(box[1]+1)):
+            for y in range(int(box[2]-1),int(box[3]+1)):
+                inside = self.isInside([x+0.5,y+0.5])
+                if inside:
+                    self.region.append((x,y,z))
+        self.drawRegion()
+        self.polygon = []
+        region = []
+
+    def remove_point(self):
+        self.polygon.pop()
+        self.refresh()
+        for point in self.polygon:
+            self.MplWidget.canvas.axes.scatter(point[1], point[0], s=1)
+        self.MplWidget.canvas.draw()
+
     def select_labeled_ared(self):
         z = self.slider_slice.value()
         label = self.labeling_window.class_combo.currentText()
         np_region = np.array(self.region)
+        self.region = []
         self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), tuple(np_region[:,2])] = int(label)
         self.refresh_label_view()
 
@@ -411,8 +414,8 @@ class MatplotlibWidget(QMainWindow):
         event.accept()
 
     def close_labeling_event(self, event):
-        del self.label_array
-        del self.region
+        self.label_array = None
+        self.region = []
         event.accept()
 
 ##########################################################################################
