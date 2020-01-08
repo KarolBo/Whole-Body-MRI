@@ -85,6 +85,14 @@ class MatplotlibWidget(QMainWindow):
         self.menu_mask_positive.setChecked(False)
         self.menu_mask_negative.setChecked(False)
         menu.setChecked(True)
+
+        if self.menu_mask_positive.isChecked():
+            idx = np.where(self.label_array == 0)
+            self.dicom_data.data_array[idx[0], idx[1], idx[2], :] = 0
+        elif self.menu_mask_negative.isChecked():
+            idx = np.where(self.label_array != 0)
+            self.dicom_data.data_array[idx[0], idx[1], idx[2], :] = 0
+
         self.refresh()
 
     def show_scatter_dialog(self):
@@ -154,19 +162,12 @@ class MatplotlibWidget(QMainWindow):
 
     def getImg(self):
         if self.view == 'mri':
-            matrix = copy.deepcopy(self.dicom_data.data_array)
+            matrix = self.dicom_data.data_array
         else:
-            matrix = copy.deepcopy(self.dicom_data.cluster_array)
+            matrix = self.dicom_data.cluster_array
         
         z = self.slider_slice.value()
         stack = self.slider_stack.value()
-
-        if not self.menu_mask_none.isChecked():
-            if self.menu_mask_positive.isChecked():
-                idx = np.where(self.label_array == 0)
-            elif self.menu_mask_negative.isChecked():
-                idx = np.where(self.label_array != 0)
-            matrix[idx[0], idx[1], idx[2], :] = 0
 
         if self.plane == 'tra':
             img = matrix[:, :, z, stack]
@@ -275,13 +276,6 @@ class MatplotlibWidget(QMainWindow):
             matrix = self.dicom_data.data_array
 
         matrix = copy.deepcopy(matrix)
-        if not self.menu_mask_none.isChecked():
-            if self.menu_mask_positive.isChecked():
-                idx = np.where(self.label_array[:,:,:] == 0)
-                matrix[idx[0], idx[1], idx[2], :] = 0
-            elif self.menu_mask_negative.isChecked():
-                idx = np.where(self.label_array[:,:,:] != 0)
-                matrix[idx[0], idx[1], idx[2], :] = 0
 
         fr = int(self.cluster_dialog.fr.text())
         to = int(self.cluster_dialog.to.text())
@@ -503,26 +497,29 @@ class MatplotlibWidget(QMainWindow):
         self.MplWidget.canvas.draw()
 
     def select_labeled_ared(self):
-        if self.labeling_window.whole_cluster.isChecked():
-            cluster_class = self.labeling_window.cluster_num.text()
-            cluster_label = self.labeling_window.cluster_label.text()
-            idx = np.where(self.dicom_data.cluster_array[:,:,:,0] == int(cluster_class))
-            self.label_array[idx] = int(cluster_label)
-            self.refresh_label_view()
-        else:
-            z = self.slider_slice.value()
-            label = self.labeling_window.class_combo.currentText()
-            np_region = np.array(self.region)
-            self.region = []
+        try:
+            if self.labeling_window.whole_cluster.isChecked():
+                cluster_class = self.labeling_window.cluster_num.text()
+                cluster_label = self.labeling_window.cluster_label.text()
+                idx = np.where(self.dicom_data.cluster_array[:,:,:,0] == int(cluster_class))
+                self.label_array[idx] = int(cluster_label)
+                self.refresh_label_view()
+            else:
+                z = self.slider_slice.value()
+                label = self.labeling_window.class_combo.currentText()
+                np_region = np.array(self.region)
+                self.region = []
 
-            if self.plane == 'tra':
-                self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), :] = int(label)
-            elif self.plane == 'cor':
-                self.label_array[:, tuple(np_region[:,1]), :] = int(label)
-            elif self.plane == 'sag':
-                self.label_array[tuple(np_region[:,0]), :, :] = int(label)
+                if self.plane == 'tra':
+                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), :] = int(label)
+                elif self.plane == 'cor':
+                    self.label_array[:, tuple(np_region[:,0]), tuple(np_region[:,1])] = int(label)
+                elif self.plane == 'sag':
+                    self.label_array[tuple(np_region[:,0]), :, tuple(np_region[:,1])] = int(label)
 
-            self.refresh_label_view()
+                self.refresh_label_view()
+        except Exception as e:
+            print(e)
 
     def create_label_list(self, text):
         n = int(text)
