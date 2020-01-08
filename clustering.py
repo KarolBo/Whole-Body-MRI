@@ -10,15 +10,18 @@ def clustering(matrix, cluster_function, n=5, coords=False):
 
 	if coords:
 		matrix = add_space_features(matrix)
+		# matrix = add_z_feature(matrix)
 		matrix = matrix.reshape([x*y*z, n_components+3])
 	else:
 		matrix = matrix.reshape([x*y*z, n_components])
+
+	print(matrix.shape)
 
 	sc = StandardScaler()
 	matrix = sc.fit_transform(matrix)
 
 	clusterer = cluster_function(n_clusters=n)
-	# clusterer = cluster_function()
+	# clusterer = cluster_function(0.001, 20)
 	result = clusterer.fit_predict(matrix)
 	# print(result.shape)
 
@@ -43,5 +46,20 @@ def add_space_features(matrix):
 				new_matrix[i,j,k,features] = i
 				new_matrix[i,j,k,features+1] = j
 				new_matrix[i,j,k,features+2] = k
+
+	return new_matrix
+
+def add_z_feature(matrix):
+	x = matrix.shape[0]
+	y = matrix.shape[1]
+	z = matrix.shape[2]
+	features = matrix.shape[3]
+	new_matrix = np.zeros([x, y, z, features+1])
+	for i in range(x):
+		for j in range(y):
+			for k in range(z):
+				for f in range(features):
+					new_matrix[i,j,k,f] = matrix[i,j,k,f]
+				new_matrix[i,j,k,features] = k
 
 	return new_matrix

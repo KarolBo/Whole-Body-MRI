@@ -7,9 +7,9 @@ from MyDicom import MyDicom
 from pca import reduce_dimensionality
 from clustering import clustering
 from sklearn.cluster import MiniBatchKMeans
-from sklearn.cluster import AgglomerativeClustering
+#from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import DBSCAN
-from sklearn.cluster import OPTICS
+#from sklearn.cluster import OPTICS
 from math import ceil, acos, sqrt, log
 import copy
      
@@ -31,8 +31,10 @@ class MatplotlibWidget(QMainWindow):
         self.region = []
         self.label_array = None
 
+        self.windowing_dialog = loadUi("windowing.ui")
         self.cluster_dialog = loadUi("clustering.ui")
         self.labeling_window = loadUi("labeling.ui")
+        self.clusters_view_dialog = loadUi("clusters_view.ui")
         self.labeling_window.menuBar().setNativeMenuBar(False)
 
         self.connect_handlers()
@@ -40,34 +42,93 @@ class MatplotlibWidget(QMainWindow):
     def connect_handlers(self):
         self.menu_load.triggered.connect(self.loadData)
         self.menu_add.triggered.connect(self.addBox)
-        self.menu_pca.triggered.connect(lambda: reduce_dimensionality(self.dicom_data.data_array, 3))
+        self.menu_pca_2.triggered.connect(self.perform_pca_2)
         self.menu_clustering.triggered.connect(self.open_clustering_dialog)
         self.menu_labeling.triggered.connect(self.open_labeling_dialog)
         self.menu_mri.triggered.connect(lambda: self.set_view('mri'))
         self.menu_segmented.triggered.connect(lambda: self.set_view('segments'))
+        self.menu_mask_none.triggered.connect(lambda: self.mask_change(self.menu_mask_none))
+        self.menu_mask_positive.triggered.connect(lambda: self.mask_change(self.menu_mask_positive))
+        self.menu_mask_negative.triggered.connect(lambda: self.mask_change(self.menu_mask_negative))
         self.actionCoronal.triggered.connect(lambda: self.plane_change('cor'))
         self.actionSagittal.triggered.connect(lambda: self.plane_change('sag'))
         self.actionTransversal.triggered.connect(lambda: self.plane_change('tra'))
+        self.menu_windowing.triggered.connect(self.windowing_dialog.show)
        
         self.slider_slice.valueChanged.connect(self.slice_change)
         self.slider_stack.valueChanged.connect(self.refresh)
+        self.windowing_dialog.slider_min.valueChanged.connect(self.refresh)
+        self.windowing_dialog.slider_max.valueChanged.connect(self.refresh)
 
         self.MplWidget.canvas.mpl_connect('button_press_event', self.pressed_handler)
 
+        self.clusters_view_dialog.slicewise.toggled.connect(self.scatter_clusters)
+        self.clusters_view_dialog.slider.valueChanged.connect(self.scatter_clusters)
+
         self.cluster_dialog.button_run.clicked.connect(self.perform_clustering)
+        self.cluster_dialog.button_display.clicked.connect(self.show_scatter_dialog)
         self.cluster_dialog.closeEvent = self.close_cluster_event
         
         self.labeling_window.closeEvent = self.close_labeling_event
         self.labeling_window.lineEdit.textChanged.connect(self.create_label_list)
         self.labeling_window.menu_label_save.triggered.connect(self.save_labels)
         self.labeling_window.menu_label_load.triggered.connect(self.load_labels)
+        self.labeling_window.menu_add_labels.triggered.connect(self.add_labels)
+        self.labeling_window.menu_clear_labels.triggered.connect(self.clear_labels)
         self.labeling_window.button_label.clicked.connect(self.select_labeled_ared)
         self.labeling_window.button_clear.clicked.connect(self.clear_roi)
         self.labeling_window.button_mark.clicked.connect(self.mark_roi)
         self.labeling_window.button_back.clicked.connect(self.remove_point)
 
+    def mask_change(self, menu):
+        self.menu_mask_none.setChecked(False)
+        self.menu_mask_positive.setChecked(False)
+        self.menu_mask_negative.setChecked(False)
+        menu.setChecked(True)
+        self.refresh()
+
+    def show_scatter_dialog(self):
+        if self.dicom_data.data_array.shape[3] == 2:
+            z = self.dicom_data.data_array.shape[2]
+            self.clusters_view_dialog.show()
+            self.clusters_view_dialog.slider.setRange(0, z-1)
+            self.scatter_clusters()
+        else:
+            self.cluster_dialog.textEdit.setText('First, perform PCA!')
+
+    def scatter_clusters(self):
+        if self.clusters_view_dialog.slicewise.isChecked():
+            groups = self.dicom_data.cluster_array.max()
+            cdict = {0: 'red', 1: 'blue', 2: 'green', 3: 'yellow'}
+            self.clusters_view_dialog.MplWidget.canvas.axes.clear()
+            z = self.clusters_view_dialog.slider.value()
+            for g in range(int(groups)+1):
+                idx = np.where(self.dicom_data.cluster_array[:,:,z,:] == g)
+                x = self.dicom_data.data_array[idx[0],idx[1],z,0].flatten()
+                y = self.dicom_data.data_array[idx[0],idx[1],z,1].flatten()
+                self.clusters_view_dialog.MplWidget.canvas.axes.scatter(x, y, s=1, c=cdict[g%3])
+                self.clusters_view_dialog.MplWidget.canvas.draw()
+        else:
+            groups = self.dicom_data.cluster_array.max()
+            cdict = {0: 'red', 1: 'blue', 2: 'green', 3: 'yellow'}
+            self.clusters_view_dialog.MplWidget.canvas.axes.clear()
+            for g in range(int(groups)+1):
+                idx = np.where(self.dicom_data.cluster_array == g)
+                x = self.dicom_data.data_array[idx[0],idx[1],idx[2],0].flatten()
+                y = self.dicom_data.data_array[idx[0],idx[1],idx[2],1].flatten()
+                self.clusters_view_dialog.MplWidget.canvas.axes.scatter(x, y, s=1, c=cdict[g%3])
+                self.clusters_view_dialog.MplWidget.canvas.draw()
+
+    def perform_pca_2(self):
+        self.dicom_data.data_array = reduce_dimensionality(self.dicom_data.data_array, 2)
+        self.slider_stack.setMaximum(self.dicom_data.data_array.shape[3]-1)
+
     def slice_change(self):
         self.refresh()
+        max_value = self.windowing_dialog.slider_min.maximum()
+        min_value = self.windowing_dialog.slider_min.minimum()
+        self.windowing_dialog.slider_min.setValue(min_value)
+        self.windowing_dialog.slider_max.setValue(max_value)
         if self.labeling_window.isVisible():
             self.refresh_label_view()
 
@@ -80,8 +141,7 @@ class MatplotlibWidget(QMainWindow):
         self.slider_slice.setMaximum(self.dicom_data.data_array.shape[2]-1)
         self.slider_stack.setMinimum(0)
         self.slider_stack.setMaximum(self.dicom_data.data_array.shape[3]-1)
-        # self.dicom_data.raport()
-        self.refresh()
+        self.slice_change()
 
     def addBox(self):
         fileDialog = QFileDialog()
@@ -91,6 +151,31 @@ class MatplotlibWidget(QMainWindow):
         self.slider_slice.setMinimum(0)
         self.slider_slice.setMaximum(self.dicom_data.data_array.shape[2]-1)
         self.refresh()
+
+    def getImg(self):
+        if self.view == 'mri':
+            matrix = copy.deepcopy(self.dicom_data.data_array)
+        else:
+            matrix = copy.deepcopy(self.dicom_data.cluster_array)
+        
+        z = self.slider_slice.value()
+        stack = self.slider_stack.value()
+
+        if not self.menu_mask_none.isChecked():
+            if self.menu_mask_positive.isChecked():
+                idx = np.where(self.label_array == 0)
+            elif self.menu_mask_negative.isChecked():
+                idx = np.where(self.label_array != 0)
+            matrix[idx[0], idx[1], idx[2], :] = 0
+
+        if self.plane == 'tra':
+            img = matrix[:, :, z, stack]
+        elif self.plane == 'cor':
+            img = matrix[z, :, :, stack]
+        elif self.plane == 'sag':
+            img = matrix[:, z, :, stack]
+
+        return img
         
     def refresh(self):
         self.region = []
@@ -123,22 +208,38 @@ class MatplotlibWidget(QMainWindow):
         self.label_slice.setText(txt_slice)
         self.label_stack.setText(txt_stack)
 
-        image = self.dicom_data.getImg(z, s, self.plane, self.view)
+        image = self.getImg()
+        self.set_windowing_sliders(image)
+        val_min = self.windowing_dialog.slider_min.value()
+        val_max = self.windowing_dialog.slider_max.value()
+        image[image<val_min] = val_min
+        image[image>val_max] = val_max
         self.MplWidget.canvas.axes.clear()
         self.MplWidget.canvas.axes.imshow(image, cmap='jet', aspect=asp)
         self.MplWidget.canvas.draw()
+
+    def set_windowing_sliders(self, img):
+        val_min = np.amin(img)
+        val_max = np.amax(img)
+        self.windowing_dialog.slider_min.setRange(val_min, val_max)
+        self.windowing_dialog.slider_max.setRange(val_min, val_max)
 
     def refresh_label_view(self):
         z = self.slider_slice.value()
 
         if self.plane == 'tra':
             asp = self.dicom_data.pixelSpacing[0]/self.dicom_data.pixelSpacing[1]
+            self.slider_slice.setMaximum(self.label_array.shape[2]-1)
+            image = self.label_array[:, :, z]
         if self.plane == 'cor':
             asp = self.dicom_data.pixelSpacing[1]/self.dicom_data.pixelSpacing[2]
+            self.slider_slice.setMaximum(self.label_array.shape[0]-1)
+            image = self.label_array[z, :, :]
         if self.plane == 'sag':
             asp = self.dicom_data.pixelSpacing[0]/self.dicom_data.pixelSpacing[2]
+            self.slider_slice.setMaximum(self.label_array.shape[1]-1)
+            image = self.label_array[:, z, :]
 
-        image = self.label_array[:, :, z]
         self.labeling_window.MplWidget.canvas.axes.clear()
         self.labeling_window.MplWidget.canvas.axes.imshow(image, cmap='jet', aspect=asp)
         self.labeling_window.MplWidget.canvas.draw()
@@ -153,6 +254,8 @@ class MatplotlibWidget(QMainWindow):
         slices = self.dicom_data.data_array.shape[2]
         matrix = self.dicom_data.data_array[:,:,:,0].reshape([x, y, slices, 1])
         self.dicom_data.cluster_array = copy.deepcopy(matrix)
+        self.cluster_dialog.fr.setText('0')
+        self.cluster_dialog.to.setText(str(slices-1))
         self.cluster_dialog.show()
 
     def open_labeling_dialog(self):
@@ -163,11 +266,27 @@ class MatplotlibWidget(QMainWindow):
         self.labeling_window.show()
 
     def perform_clustering(self):
+        self.cluster_dialog.textEdit.setText('Custering...')
+
         if self.cluster_dialog.checkbox_pca.isChecked():
             dim = int(self.cluster_dialog.line_pca.text())
             matrix = reduce_dimensionality(self.dicom_data.data_array, dim)
         else:
             matrix = self.dicom_data.data_array
+
+        matrix = copy.deepcopy(matrix)
+        if not self.menu_mask_none.isChecked():
+            if self.menu_mask_positive.isChecked():
+                idx = np.where(self.label_array[:,:,:] == 0)
+                matrix[idx[0], idx[1], idx[2], :] = 0
+            elif self.menu_mask_negative.isChecked():
+                idx = np.where(self.label_array[:,:,:] != 0)
+                matrix[idx[0], idx[1], idx[2], :] = 0
+
+        fr = int(self.cluster_dialog.fr.text())
+        to = int(self.cluster_dialog.to.text())
+        matrix[:,:,:fr,:] = 0
+        matrix[:,:,to:,:] = 0
 
         coordinates = self.cluster_dialog.checkbox_coords.isChecked()    
         clusters = int(self.cluster_dialog.line_clusters.text())
@@ -339,6 +458,7 @@ class MatplotlibWidget(QMainWindow):
         
         region = [(x,y,z),]
         seeds = [(x,y,z),]
+        visited = {(x,y,z),}
 
         while seeds:
             seed = seeds.pop()
@@ -346,12 +466,14 @@ class MatplotlibWidget(QMainWindow):
             y = seed[1]
             for i in range(x-1, x+2):
                 for j in range(y-1, y+2):
+                    point = (i,j,z)
                     try:
                         if image[i,j] == value:
-                            point = (i,j,z)
-                            if point not in region:
-                                seeds.append(point)
-                                region.append(point)
+                            if point in visited:
+                                continue
+                            seeds.append(point)
+                            region.append(point)
+                        visited.add(point)
                     except:
                         pass
         return region
@@ -381,17 +503,32 @@ class MatplotlibWidget(QMainWindow):
         self.MplWidget.canvas.draw()
 
     def select_labeled_ared(self):
-        z = self.slider_slice.value()
-        label = self.labeling_window.class_combo.currentText()
-        np_region = np.array(self.region)
-        self.region = []
-        self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), tuple(np_region[:,2])] = int(label)
-        self.refresh_label_view()
+        if self.labeling_window.whole_cluster.isChecked():
+            cluster_class = self.labeling_window.cluster_num.text()
+            cluster_label = self.labeling_window.cluster_label.text()
+            idx = np.where(self.dicom_data.cluster_array[:,:,:,0] == int(cluster_class))
+            self.label_array[idx] = int(cluster_label)
+            self.refresh_label_view()
+        else:
+            z = self.slider_slice.value()
+            label = self.labeling_window.class_combo.currentText()
+            np_region = np.array(self.region)
+            self.region = []
+
+            if self.plane == 'tra':
+                self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), :] = int(label)
+            elif self.plane == 'cor':
+                self.label_array[:, tuple(np_region[:,1]), :] = int(label)
+            elif self.plane == 'sag':
+                self.label_array[tuple(np_region[:,0]), :, :] = int(label)
+
+            self.refresh_label_view()
 
     def create_label_list(self, text):
         n = int(text)
-        for i in range(n):
-            self.labeling_window.class_combo.addItem(str(i+1))
+        self.labeling_window.class_combo.clear()
+        for i in range(n+1):
+            self.labeling_window.class_combo.addItem(str(i))
 
     def save_labels(self):
         path = QFileDialog.getSaveFileName(self)[0]
@@ -402,15 +539,27 @@ class MatplotlibWidget(QMainWindow):
         self.label_array = np.load(path)
         self.refresh_label_view()
 
+    def add_labels(self):
+        path = QFileDialog.getOpenFileName(self)[0]
+        new_label_array = np.load(path)
+        self.label_array = self.label_array + new_label_array
+        self.refresh_label_view()
+
+    def clear_labels(self):
+        self.label_array = np.zeros(self.label_array.shape)
+        self.refresh_label_view()
+
     def closeEvent(self, event):
         print('bye')
         self.cluster_dialog.accept()
+        self.windowing_dialog.accept()
         self.labeling_window.close()
         event.accept()
 
     def close_cluster_event(self, event):
         self.set_view('mri')
         del self.dicom_data.cluster_array
+        self.clusters_view_dialog.accept()
         event.accept()
 
     def close_labeling_event(self, event):

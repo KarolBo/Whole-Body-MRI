@@ -37,22 +37,7 @@ class MyDicom(object):
             else:
                 sliceDict[location] = 1
         return list(sliceDict.values())[0]
- 
-###############################################################################
-    
-    def getImg(self, z, stack, plane='tra', view='mri'):
-        if view == 'mri':
-            data_array = self.data_array
-        else:
-            data_array = self.cluster_array
-            
-        if plane == 'tra':
-            return data_array[:, :, z, stack]
-        elif plane == 'cor':
-            return data_array[z, :, :, stack]
-        elif plane == 'sag':
-            return data_array[:, z, :, stack]
-                   
+                
 ###############################################################################
 
     def getTag(self, name, default='missing', slice=0, stack=0):
