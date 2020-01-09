@@ -16,23 +16,23 @@ def clustering(matrix, cluster_function, n=5, coords=False):
 	else:
 		matrix = matrix.reshape([x*y*z, n_components])
 
-	# matrix = np.ma.masked_equal(matrix, 0)
 	data = copy.deepcopy(matrix)
 	print(data.shape)
-	idx = np.any(data, axis=-1)
+	idx = np.all(data, axis=-1)
 	data = data[idx, :]
-	# np.compress(idx, data, axis=0)
-	# data = np.asarray([i for i in data if all(i)])
 	print(data.shape)
 
 	sc = StandardScaler()
 	data = sc.fit_transform(data)
+	matrix = sc.transform(matrix)
 
 	clusterer = cluster_function(n_clusters=n)
 	# clusterer = cluster_function(0.001, 20)
-	result = clusterer.fit_predict(matrix)
+	clusterer.fit(data)
+	result = clusterer.predict(matrix)
 	# print(result.shape)
 
+	# result[np.logical_not(idx)] = 0
 	result = result.reshape([x, y, z, 1])	
 
 	# plt.imshow(result[:,:,10, 0])

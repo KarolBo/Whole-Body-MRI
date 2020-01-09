@@ -521,7 +521,7 @@ class MatplotlibWidget(QMainWindow):
                 idx = np.where(self.dicom_data.cluster_array[:,:,:,0] == int(cluster_class))
                 self.label_array[idx] = int(cluster_label)
                 self.refresh_label_view()
-            else:
+            elif self.labeling_window.roi.isChecked():
                 z = self.slider_slice.value()
                 label = self.labeling_window.class_combo.currentText()
                 np_region = np.array(self.region)
@@ -533,6 +533,18 @@ class MatplotlibWidget(QMainWindow):
                     self.label_array[:, tuple(np_region[:,0]), tuple(np_region[:,1])] = int(label)
                 elif self.plane == 'sag':
                     self.label_array[tuple(np_region[:,0]), :, tuple(np_region[:,1])] = int(label)
+            else:
+                z = self.slider_slice.value()
+                label = self.labeling_window.class_combo.currentText()
+                np_region = np.array(self.region)
+                self.region = []
+
+                if self.plane == 'tra':
+                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), tuple(np_region[:,2])] = int(label)
+                elif self.plane == 'cor':
+                    self.label_array[tuple(np_region[:,2]), tuple(np_region[:,0]), tuple(np_region[:,1])] = int(label)
+                elif self.plane == 'sag':
+                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,2]), tuple(np_region[:,1])] = int(label)
 
                 self.refresh_label_view()
         except Exception as e:
