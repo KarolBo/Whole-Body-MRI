@@ -37,11 +37,19 @@ class MatplotlibWidget(QMainWindow):
         self.clusters_view_dialog = loadUi("clusters_view.ui")
         self.labeling_window.menuBar().setNativeMenuBar(False)
 
+        self.box_paths = []
+        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM1')
+        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM2')
+        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM3')
+        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM4')
+        self.reload()
+
         self.connect_handlers()
 
     def connect_handlers(self):
         self.menu_load.triggered.connect(self.loadData)
         self.menu_add.triggered.connect(self.addBox)
+        self.menu_reload.triggered.connect(self.reload)
         self.menu_pca_2.triggered.connect(self.perform_pca_2)
         self.menu_clustering.triggered.connect(self.open_clustering_dialog)
         self.menu_labeling.triggered.connect(self.open_labeling_dialog)
@@ -80,6 +88,12 @@ class MatplotlibWidget(QMainWindow):
         self.labeling_window.button_mark.clicked.connect(self.mark_roi)
         self.labeling_window.button_back.clicked.connect(self.remove_point)
 
+    def reload(self):
+        self.dicom_data = MyDicom(self.box_paths[0]+'/')
+        for i in range(1, len(self.box_paths)):
+            self.dicom_data.addBox(self.box_paths[i]+'/')
+        self.refresh()
+
     def mask_change(self, menu):
         self.menu_mask_none.setChecked(False)
         self.menu_mask_positive.setChecked(False)
@@ -92,6 +106,7 @@ class MatplotlibWidget(QMainWindow):
         elif self.menu_mask_negative.isChecked():
             idx = np.where(self.label_array != 0)
             self.dicom_data.data_array[idx[0], idx[1], idx[2], :] = 0
+        # self.dicom_data.data_array = np.ma.masked_equal(self.dicom_data.data_array, 0)
 
         self.refresh()
 
@@ -150,6 +165,8 @@ class MatplotlibWidget(QMainWindow):
         self.slider_stack.setMinimum(0)
         self.slider_stack.setMaximum(self.dicom_data.data_array.shape[3]-1)
         self.slice_change()
+        self.box_paths=[path,]
+        print(path)
 
     def addBox(self):
         fileDialog = QFileDialog()
@@ -159,12 +176,14 @@ class MatplotlibWidget(QMainWindow):
         self.slider_slice.setMinimum(0)
         self.slider_slice.setMaximum(self.dicom_data.data_array.shape[2]-1)
         self.refresh()
+        self.box_paths.append(path)
+        print(path)
 
     def getImg(self):
         if self.view == 'mri':
-            matrix = self.dicom_data.data_array
+            matrix = copy.deepcopy(self.dicom_data.data_array)
         else:
-            matrix = self.dicom_data.cluster_array
+            matrix = copy.deepcopy(self.dicom_data.cluster_array)
         
         z = self.slider_slice.value()
         stack = self.slider_stack.value()
@@ -274,8 +293,6 @@ class MatplotlibWidget(QMainWindow):
             matrix = reduce_dimensionality(self.dicom_data.data_array, dim)
         else:
             matrix = self.dicom_data.data_array
-
-        matrix = copy.deepcopy(matrix)
 
         fr = int(self.cluster_dialog.fr.text())
         to = int(self.cluster_dialog.to.text())

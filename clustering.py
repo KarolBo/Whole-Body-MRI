@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+import copy
 
 def clustering(matrix, cluster_function, n=5, coords=False):
 	x = matrix.shape[0]
@@ -15,10 +16,17 @@ def clustering(matrix, cluster_function, n=5, coords=False):
 	else:
 		matrix = matrix.reshape([x*y*z, n_components])
 
-	print(matrix.shape)
+	# matrix = np.ma.masked_equal(matrix, 0)
+	data = copy.deepcopy(matrix)
+	print(data.shape)
+	idx = np.any(data, axis=-1)
+	data = data[idx, :]
+	# np.compress(idx, data, axis=0)
+	# data = np.asarray([i for i in data if all(i)])
+	print(data.shape)
 
 	sc = StandardScaler()
-	matrix = sc.fit_transform(matrix)
+	data = sc.fit_transform(data)
 
 	clusterer = cluster_function(n_clusters=n)
 	# clusterer = cluster_function(0.001, 20)
