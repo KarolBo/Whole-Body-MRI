@@ -9,9 +9,17 @@ from clustering import clustering
 from sklearn.cluster import MiniBatchKMeans
 #from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import DBSCAN
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.tree import export_graphviz
 #from sklearn.cluster import OPTICS
 from math import ceil, acos, sqrt, log
 import copy
+import pickle
+import matplotlib.pyplot as plt
+from math import log as ln
+from visualiser import *
      
 class MatplotlibWidget(QMainWindow):
     
@@ -30,19 +38,28 @@ class MatplotlibWidget(QMainWindow):
         self.polygon = []
         self.region = []
         self.label_array = None
+        self.clf = None
 
         self.windowing_dialog = loadUi("windowing.ui")
         self.cluster_dialog = loadUi("clustering.ui")
         self.labeling_window = loadUi("labeling.ui")
+        self.labeling_window.addToolBar(NavigationToolbar(self.labeling_window.MplWidget.canvas, self.labeling_window))
         self.clusters_view_dialog = loadUi("clusters_view.ui")
+        self.svm_window = loadUi("svm.ui")
+        self.svm_window.addToolBar(NavigationToolbar(self.svm_window.MplWidget.canvas, self.svm_window))
         self.labeling_window.menuBar().setNativeMenuBar(False)
 
         self.box_paths = []
-        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM1')
-        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM2')
-        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM3')
-        self.box_paths.append('K:/Lukas_IVIM/vol1/IVIM4')
+        self.box_paths.append('/media/mrv6/ADATA SD700/Lukas_IVIM/vol1/IVIM1')
+        self.box_paths.append('/media/mrv6/ADATA SD700/Lukas_IVIM/vol1/IVIM2')
+        self.box_paths.append('/media/mrv6/ADATA SD700/Lukas_IVIM/vol1/IVIM3')
+        self.box_paths.append('/media/mrv6/ADATA SD700/Lukas_IVIM/vol1/IVIM4')
         self.reload()
+        self.open_labeling_dialog()
+        self.label_array = np.load('/media/mrv6/ADATA SD700/Whole Body/labels/vol_1_no_muscles.npy')
+        self.refresh()
+
+        # self.calculate_attenuation()
 
         self.connect_handlers()
 
@@ -62,7 +79,10 @@ class MatplotlibWidget(QMainWindow):
         self.actionSagittal.triggered.connect(lambda: self.plane_change('sag'))
         self.actionTransversal.triggered.connect(lambda: self.plane_change('tra'))
         self.menu_windowing.triggered.connect(self.windowing_dialog.show)
-       
+        self.menu_svm.triggered.connect(self.svm_window.show)
+        self.menu_plots.triggered.connect(self.get_b_plots)
+        self.menu_overlay.triggered.connect(self.display_overlay)
+
         self.slider_slice.valueChanged.connect(self.slice_change)
         self.slider_stack.valueChanged.connect(self.refresh)
         self.windowing_dialog.slider_min.valueChanged.connect(self.refresh)
@@ -83,10 +103,258 @@ class MatplotlibWidget(QMainWindow):
         self.labeling_window.menu_label_load.triggered.connect(self.load_labels)
         self.labeling_window.menu_add_labels.triggered.connect(self.add_labels)
         self.labeling_window.menu_clear_labels.triggered.connect(self.clear_labels)
+        self.labeling_window.menu_scatter.triggered.connect(self.display_scatter)
+        self.labeling_window.menu_3d.triggered.connect(self.vis_3d)
         self.labeling_window.button_label.clicked.connect(self.select_labeled_ared)
         self.labeling_window.button_clear.clicked.connect(self.clear_roi)
         self.labeling_window.button_mark.clicked.connect(self.mark_roi)
         self.labeling_window.button_back.clicked.connect(self.remove_point)
+
+        self.svm_window.menu_load_model.triggered.connect(self.load_clf)
+        # self.svm_window.menu_save_model.triggered.connect(self.save_svm_model)
+        self.svm_window.button_train.clicked.connect(self.train_clf)
+        self.svm_window.button_classify.clicked.connect(self.perform_clf)
+
+    def vis_3d(self):
+        m = MyDialog()
+        m.spacing = self.dicom_data.pixelSpacing
+        m.label = self.label_array
+        m.rest = self.dicom_data.data_array[:,:,:,0]
+        m.display()
+        m.configure_traits()
+
+    def calculate_attenuation(self):
+        x = self.dicom_data.data_array.shape[0]
+        y = self.dicom_data.data_array.shape[1]
+        z = self.dicom_data.data_array.shape[2]
+        n = self.dicom_data.data_array.shape[3]
+        array = np.zeros([x, y, z, n-1])
+        for b in range(0, n-1):
+            idx_0 = np.where(self.dicom_data.data_array[:,:,:,0] == 0)
+            idx_1 = np.where(self.dicom_data.data_array[:,:,:,0] != 0)
+            array[idx_0[0],idx_0[1],idx_0[2],b] = 0
+            array[idx_1[0],idx_1[1],idx_1[2],b] = np.divide(self.dicom_data.data_array[idx_1[0],idx_1[1],idx_1[2],b+1],
+                                                            self.dicom_data.data_array[idx_1[0],idx_1[1],idx_1[2],0])
+        idx = np.where(array != 0)
+        array[idx] = np.log(array[idx])
+        self.dicom_data.data_array = array
+
+    def get_b_plots(self):
+        class_list = ('air', 'eye', 'fluid', 'gray matter', 
+                      'white matter', 'kidney', 'muscle', 
+                      'pancreas', 'limphatic nodes', 'spleen', 
+                      'testicle', 'liever')
+        b_values = (0, 10, 50, 150, 200, 300, 500, 800)
+        n_classes = int(self.label_array.max()) + 1
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        for n in range(n_classes):
+            idx = np.where(self.label_array == n)
+            values = self.dicom_data.data_array[idx[0], idx[1], idx[2], :]
+            data = values.mean(axis=0)
+            sd = values.std(axis=0)
+            color = plt.cm.Paired(n)
+            ax.plot(b_values, data, color=color, label=class_list[n])
+            plt.xlabel('b')
+            plt.ylabel('S')
+            ax.legend()
+        plt.show()
+            
+    def train_clf_old(self):
+        self.clf = RandomForestClassifier(n_estimators=100, max_leaf_nodes=16, n_jobs=-1)
+        x = self.dicom_data.data_array.shape[0]
+        y = self.dicom_data.data_array.shape[1]
+        z = self.dicom_data.data_array.shape[2]
+        n = self.dicom_data.data_array.shape[3]
+        if self.svm_window.include_coordinates.isChecked():
+            X = self.add_space_features(self.dicom_data.data_array)
+            X = X.reshape([x*y*z, n+3])
+        else:
+            X = self.dicom_data.data_array.reshape([x*y*z, n])
+        y = self.label_array.reshape([x*y*z])
+
+        test_size = float(self.svm_window.val_set.text())/100.0
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=101) 
+
+        print("training...")
+        self.clf.fit(X_train, y_train)
+        print("The forest has grown!")
+        
+        # clf_file = open('random_forest', 'wb')
+        # pickle.dump(self.clf, clf_file)
+        # file = open('random_forest', 'rb')
+        # self.clf = pickle.load(file)
+
+        print("predicting...")
+        pred = self.clf.predict(X_test)
+        print("done!")
+        acc = accuracy_score(y_test, pred, normalize=True)
+        score = self.clf.score(X_test, y_test)
+        print('accuracy:', acc)
+        print('score:', score)
+
+        self.visualize_clf_borders(X_test, y_test)
+
+    def train_clf(self):
+        self.clf = RandomForestClassifier(n_estimators=100, max_leaf_nodes=32, n_jobs=-1)
+        x = self.dicom_data.data_array.shape[0]
+        y = self.dicom_data.data_array.shape[1]
+        z = self.dicom_data.data_array.shape[2]
+        n = self.dicom_data.data_array.shape[3]
+
+        if self.svm_window.include_coordinates.isChecked():
+            X = self.add_space_features(self.dicom_data.data_array)
+            n += 3
+        else:
+            X = self.dicom_data.data_array
+
+        test_slice = X[156,:,:,:]
+        test_labels = self.label_array[156,:,:]
+        X_test = test_slice.reshape([x*z, n])
+        y_test = test_labels.reshape([x*z])
+
+        # X_train = np.delete(X, 156, 0)
+        # labels = np.delete(self.label_array, 156, 0)
+        X_train = X
+        labels = self.label_array
+        X_train = X_train.reshape([(x)*y*z, n])
+        y_train = labels.reshape([(x)*y*z]) 
+
+        print("training...")
+        self.clf.fit(X_train, y_train)
+        print("The forest has grown!")
+
+        print("predicting...")
+        X_pred = self.clf.predict(X_test)
+        print("done!")
+        acc = accuracy_score(y_test, X_pred, normalize=True)
+        score = self.clf.score(X_test, y_test)
+        print('accuracy:', acc)
+        print('score:', score)
+
+        predicted_slice = X_pred.reshape([x,z])
+        asp = self.dicom_data.pixelSpacing[1]/self.dicom_data.pixelSpacing[2]
+        self.svm_window.MplWidget.canvas.axes.clear()
+        self.svm_window.MplWidget.canvas.axes.imshow(predicted_slice, cmap='jet', aspect=asp)
+        self.svm_window.MplWidget.canvas.draw()
+
+        self.visualize_clf_borders(X_test, y_test)
+
+    def load_clf(self):
+        # fileDialog = QFileDialog()
+        # fileDialog.setFileMode(QFileDialog.ExistingFile)
+        filename = str(QFileDialog.getOpenFileName(self)[0])
+        print(filename)
+        file = open(filename, 'rb')
+        self.clf = pickle.load(file)
+        print(type(self.clf))
+        tree = self.clf.estimators_[5]
+        self.depict_tree(tree)
+
+    def depict_tree(self, tree):
+        class_list = ('air', 'eye', 'fluid', 'gray matter', 
+                      'white matter', 'kidney', 'muscle', 
+                      'pancreas', 'limphatic nodes', 'spleen', 
+                      'testicle', 'liever')
+        export_graphviz(tree, out_file='tree.dot', 
+                class_names = class_list,
+                rounded = True, proportion = False, 
+                precision = 2, filled = True)
+
+    def display_scatter(self):
+        try:
+            n_classes = int(self.label_array.max()) + 1
+            print(n_classes, 'classes')
+            idx = np.where(self.label_array != 0)
+            X = self.dicom_data.data_array[idx[0], idx[1], idx[2]]
+            y = self.label_array
+            plt.scatter(X[:, 0], X[:, 1], s=1, cmap='jet')
+            plt.xlabel('x2')
+            plt.ylabel('x1')
+            plt.show()
+        except Exception as e:
+            print(e)
+
+    def visualize_clf_borders(self, X, y):
+        try:
+            colors = 'rgbcmy'
+            plot_step = 0.05
+            n_classes = int(self.label_array.max()) + 1
+
+            a, X, b, y = train_test_split(X, y, test_size=0.05, random_state=101)
+            print(X.shape)
+
+            x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+            y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+            xx, yy = np.meshgrid(np.arange(x_min, x_max, plot_step),
+                                 np.arange(y_min, y_max, plot_step))
+
+            print("predicting...")
+            Z = self.clf.predict(np.c_[xx.ravel(), yy.ravel()])
+            print("done!")
+            Z = Z.reshape(xx.shape)
+            cs = plt.contourf(xx, yy, Z, cmap='jet')
+
+            plt.axis("tight")
+
+            # Plot the training points
+            print(n_classes, 'classes')
+            for i in range(n_classes):
+                idx = np.where(y == i)
+                color = [plt.cm.Paired(i),]
+                plt.scatter(X[idx, 0], X[idx, 1], cmap='jet', s=1)
+
+            plt.axis("tight")
+            plt.show()
+        except Exception as e:
+            print(e)
+
+    def perform_clf(self):
+        try:
+            x = self.dicom_data.data_array.shape[0]
+            y = self.dicom_data.data_array.shape[1]
+            z = self.dicom_data.data_array.shape[2]
+            n = self.dicom_data.data_array.shape[3]
+            if self.svm_window.include_coordinates.isChecked():
+                X = self.add_space_features(self.dicom_data.data_array)
+                X = X.reshape([x*y*z, n+3])
+            else:
+                X = self.dicom_data.data_array.reshape([x*y*z, n])
+            y = self.label_array.reshape([x*y*z])
+            test_size = float(self.svm_window.val_set.text())/100.0
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=101) 
+
+            file = open('random_forest', 'rb')
+            self.clf = pickle.load(file)
+
+            print("predicting...")
+            pred = self.clf.predict(X_test)
+            print("done!")
+            acc = accuracy_score(y_test, pred, normalize=True)
+            score = self.clf.score(X_test, y_test)
+            print('accuracy:', acc)
+            print('score:', score)
+
+            self.visualize_clf_borders(X_test, y_test)
+        except Exception as e:
+            print(e)
+
+    def add_space_features(self, matrix):
+        x = matrix.shape[0]
+        y = matrix.shape[1]
+        z = matrix.shape[2]
+        features = matrix.shape[3]
+        new_matrix = np.zeros([x, y, z, features+3])
+        for i in range(x):
+            for j in range(y):
+                for k in range(z):
+                    for f in range(features):
+                        new_matrix[i,j,k,f] = matrix[i,j,k,f]
+                        new_matrix[i,j,k,features] = i
+                        new_matrix[i,j,k,features+1] = j
+                        new_matrix[i,j,k,features+2] = k
+
+        return new_matrix
 
     def reload(self):
         self.dicom_data = MyDicom(self.box_paths[0]+'/')
@@ -237,6 +505,25 @@ class MatplotlibWidget(QMainWindow):
         self.MplWidget.canvas.axes.clear()
         self.MplWidget.canvas.axes.imshow(image, cmap='jet', aspect=asp)
         self.MplWidget.canvas.draw()
+
+        plt.show()
+
+    def display_overlay(self):
+        z = self.slider_slice.value()
+        image = self.getImg()
+        if self.plane == 'tra':
+            asp = self.dicom_data.pixelSpacing[0]/self.dicom_data.pixelSpacing[1]
+            label_image = self.label_array[:,:,z]
+        if self.plane == 'cor':
+            asp = self.dicom_data.pixelSpacing[1]/self.dicom_data.pixelSpacing[2]
+            label_image = self.label_array[z,:,:]
+        if self.plane == 'sag':
+            asp = self.dicom_data.pixelSpacing[0]/self.dicom_data.pixelSpacing[2]
+            label_image = self.label_array[:,z,:]
+        label_image = np.ma.masked_array(label_image, label_image == 0)
+        plt.imshow(image, cmap='gray', aspect=asp)
+        plt.imshow(label_image, cmap='jet', aspect=asp, alpha=0.6)
+        plt.show()
 
     def set_windowing_sliders(self, img):
         val_min = np.amin(img)
@@ -528,11 +815,11 @@ class MatplotlibWidget(QMainWindow):
                 self.region = []
 
                 if self.plane == 'tra':
-                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), :] = int(label)
+                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,1]), tuple(np_region[:,2])] = int(label)
                 elif self.plane == 'cor':
-                    self.label_array[:, tuple(np_region[:,0]), tuple(np_region[:,1])] = int(label)
+                    self.label_array[tuple(np_region[:,2]), tuple(np_region[:,0]), tuple(np_region[:,1])] = int(label)
                 elif self.plane == 'sag':
-                    self.label_array[tuple(np_region[:,0]), :, tuple(np_region[:,1])] = int(label)
+                    self.label_array[tuple(np_region[:,0]), tuple(np_region[:,2]), tuple(np_region[:,1])] = int(label)
             else:
                 z = self.slider_slice.value()
                 label = self.labeling_window.class_combo.currentText()
@@ -562,13 +849,22 @@ class MatplotlibWidget(QMainWindow):
 
     def load_labels(self):
         path = QFileDialog.getOpenFileName(self)[0]
-        self.label_array = np.load(path)
+        if self.labeling_window.radio_load_as.isChecked():
+            self.label_array = np.load(path)
+            idx = np.where(self.label_array)
+            self.label_array[idx] = int(self.labeling_window.load_as.text())
+        else:
+            self.label_array = np.load(path)
         self.refresh_label_view()
 
     def add_labels(self):
         path = QFileDialog.getOpenFileName(self)[0]
-        new_label_array = np.load(path)
-        self.label_array = self.label_array + new_label_array
+        if self.labeling_window.radio_load_as.isChecked():
+            new_label_array = np.load(path)
+            idx = np.where(new_label_array)
+            self.label_array[idx] = int(self.labeling_window.load_as.text())
+        else:
+            self.label_array = self.label_array + np.load(path)
         self.refresh_label_view()
 
     def clear_labels(self):
@@ -580,6 +876,7 @@ class MatplotlibWidget(QMainWindow):
         self.cluster_dialog.accept()
         self.windowing_dialog.accept()
         self.labeling_window.close()
+        self.svm_window.close()
         event.accept()
 
     def close_cluster_event(self, event):

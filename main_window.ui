@@ -99,16 +99,14 @@
      <height>21</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuFile">
+   <widget class="QMenu" name="menu_load_2">
     <property name="title">
      <string>File</string>
     </property>
-    <addaction name="separator"/>
     <addaction name="menu_load"/>
     <addaction name="menu_add"/>
     <addaction name="separator"/>
-    <addaction name="actionSettings"/>
-    <addaction name="separator"/>
+    <addaction name="menu_reload"/>
    </widget>
    <widget class="QMenu" name="menuTools">
     <property name="title">
@@ -118,7 +116,8 @@
     <addaction name="menu_labeling"/>
     <addaction name="menu_clustering"/>
     <addaction name="separator"/>
-    <addaction name="actionSVM_2"/>
+    <addaction name="menu_svm"/>
+    <addaction name="menu_plots"/>
    </widget>
    <widget class="QMenu" name="menuProjection">
     <property name="title">
@@ -145,8 +144,9 @@
     <addaction name="menu_segmented"/>
     <addaction name="menu_windowing"/>
     <addaction name="menu_mask_2"/>
+    <addaction name="menu_overlay"/>
    </widget>
-   <addaction name="menuFile"/>
+   <addaction name="menu_load_2"/>
    <addaction name="menuProjection"/>
    <addaction name="menuView"/>
    <addaction name="menuTools"/>
@@ -221,7 +221,7 @@
     <string>Segmented</string>
    </property>
   </action>
-  <action name="actionSVM_2">
+  <action name="menu_svm">
    <property name="text">
     <string>SVM</string>
    </property>
@@ -261,6 +261,26 @@
    </property>
    <property name="text">
     <string>none</string>
+   </property>
+  </action>
+  <action name="menu_reload">
+   <property name="text">
+    <string>Reload</string>
+   </property>
+  </action>
+  <action name="menu_save">
+   <property name="text">
+    <string>Save Data</string>
+   </property>
+  </action>
+  <action name="menu_plots">
+   <property name="text">
+    <string>Plots</string>
+   </property>
+  </action>
+  <action name="menu_overlay">
+   <property name="text">
+    <string>Overlay</string>
    </property>
   </action>
  </widget>

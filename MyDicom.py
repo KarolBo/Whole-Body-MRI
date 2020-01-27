@@ -7,7 +7,7 @@ from math import ceil
 
 class MyDicom(object):
     
-    def __init__(self, path):
+    def __init__(self, path, numpy=False):
         fileList = self.loadData(path)
         self.pixelSpacing = None
         self.data_array = self.load_array(fileList)
